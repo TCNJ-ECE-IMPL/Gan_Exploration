@@ -1,12 +1,13 @@
 #Redoing Gan Model
 import tensorflow as tf
-from tensorflow.keras.layers import Input, Reshape, Dropout, Dense
+from tensorflow.keras.layers import Input, Reshape, Dropout, Dense, Softmax
 from tensorflow.keras.layers import Flatten, BatchNormalization
 from tensorflow.keras.layers import Activation, ZeroPadding2D
 from tensorflow.keras.layers import LeakyReLU
 from tensorflow.keras.layers import UpSampling2D, Conv2D
 from tensorflow.keras.models import Sequential, Model, load_model
 from tensorflow.keras.optimizers import Adam
+# import tensorflow as tf
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
@@ -16,19 +17,27 @@ import matplotlib.pyplot as plt
 import optuna
 import glob
 import cv2
+import argparse 
+
+from tensorflow.compat.v1 import ConfigProto
+from tensorflow.compat.v1 import InteractiveSession
+
+os.environ["CUDA_VISIBLE_DEVICES"]="0" 
+
+config = ConfigProto()
+config.gpu_options.per_process_gpu_memory_fraction = 0.333
+session = InteractiveSession(config=config)
 
 #Checking available 
 print('Num of GPUs avaiable',len(tf.config.list_physical_devices('GPU')))
 
-os.environ["CUDA_VISIBLE_DEVICES"]="0" 
-
 datapath = '/home/nallurn1/VQGAN/resized_images'
 
 x = input("Training File name: ")
-d_lr = .0001
-g_lr = .002
+d_lr = .001 #.0001
+g_lr = .0015 #.0015
 # d_lr = input("Discriminator LR: ")
-epochs = 5
+epochs = 4
 batch_size = 32
 seed_size = 100
 gen_res = 3
@@ -36,6 +45,12 @@ rows = 1
 cols = 1
 preview_margin = 1
 
+user_file = input("Output File Name: ")
+opt = input("ADAM or SGD: ")
+
+# parser = argparse.ArgumentParser(description='Inputs')
+# parser.add_argument("optimizers")
+# opt = parser.parse_args()
 
 #Converting the images into numpy file (binary)
 training_binary_path = os.path.join(datapath, f'training_data{x}.npy')
@@ -52,8 +67,12 @@ if not os.path.isfile(training_binary_path):
 		if path != "/home/nallurn1/VQGAN/resized_images/training_data_96_96.npy":
 			if path != "/home/nallurn1/VQGAN/resized_images/training_data_32_32.npy":
 				if path != "/home/nallurn1/VQGAN/resized_images/output":
-					image = Image.open(path).resize((32, 32), Image.ANTIALIAS)
-					training_data.append(np.asarray(image))
+					if path != "/home/nallurn1/VQGAN/resized_images/training_data1.npy": 
+						if path != "/home/nallurn1/VQGAN/resized_images/training_data2.npy":
+							if path != "/home/nallurn1/VQGAN/resized_images/training_dataSGD_1.npy":
+								if path != "/home/nallurn1/VQGAN/resized_images/training_dataSGD_2.npy":
+									image = Image.open(path).resize((32, 32), Image.ANTIALIAS)
+									training_data.append(np.asarray(image))
 
 	training_data = np.reshape(training_data,(-1, 32, 32, 3))
 	training_data = training_data.astype(np.float32)
@@ -82,20 +101,22 @@ def build_generator(seed_size, channels):
     model.add(BatchNormalization(momentum=0.8))
     model.add(Activation("relu"))
 
+    #256
     model.add(UpSampling2D())
     model.add(Conv2D(256,kernel_size=3,padding="same"))
     model.add(BatchNormalization(momentum=0.8))
     model.add(Activation("relu"))
    
     # Output resolution, additional upsampling
+    #64
     model.add(UpSampling2D())
-    model.add(Conv2D(128,kernel_size=3,padding="same"))
+    model.add(Conv2D(64,kernel_size=3,padding="same"))
     model.add(BatchNormalization(momentum=0.8))
     model.add(Activation("relu"))
 
     # Final CNN layer
     model.add(Conv2D(channels,kernel_size=3,padding="same"))
-    model.add(Activation("tanh"))
+    # model.add(Activation("")) #-1 to 1 for tanh activation
 
     model.summary()
     return model
@@ -138,6 +159,7 @@ def build_discriminator(image_shape):
 def save_images(counter, noise,gen_res):
     image_array = np.full((preview_margin+(rows*(32+preview_margin)), preview_margin+(cols*(32+preview_margin)), 3),255, dtype=np.uint8)
 
+    #.predict(), returns np
     generated_images = generator.predict(noise)
     generated_images = 0.5 * generated_images + 0.5
 
@@ -153,7 +175,7 @@ def save_images(counter, noise,gen_res):
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
-    filename = os.path.join(output_path,f"training_{gen_res}_{d_lr}_{g_lr}_7_-{counter}.png")
+    filename = os.path.join(output_path,f"training_{gen_res}_{user_file}_{counter}.png")
     im = Image.fromarray(image_array)
     im.save(filename)
 
@@ -186,9 +208,16 @@ def discriminator_loss(real_output, fake_output):
 def generator_loss(fake_output):
     return cross_entropy(tf.ones_like(fake_output), fake_output)
 
-#Adam and the same learning rate and momentum: 1.5e-4,0.5
-generator_optimizer = tf.keras.optimizers.Adam(g_lr,0.7)
-discriminator_optimizer = tf.keras.optimizers.Adam(d_lr,0.5)
+
+if opt == "ADAM":
+	#Adam and the same learning rate and momentum: 1.5e-4,0.5
+	generator_optimizer = tf.keras.optimizers.Adam(g_lr,0.5)
+	discriminator_optimizer = tf.keras.optimizers.Adam(d_lr,0.5)
+
+if opt == "SGD":
+	#SGD: learning rate, g_lr & d_lr
+	generator_optimizer = tf.keras.optimizers.SGD(g_lr)
+	discriminator_optimizer = tf.keras.optimizers.SGD(d_lr)
 
 #@tf.function: allows for precompling of the function below for faster run time
 @tf.function
@@ -197,7 +226,7 @@ def train_step(images):
   seed = tf.random.normal([batch_size, seed_size])
 
   with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-    generated_images = generator(seed, training=True)
+    generated_images = generator(seed, training=True) #This returns a tensorflow tensor
 
     real_output = discriminator(images, training=True)
     fake_output = discriminator(generated_images, training=True)
@@ -205,17 +234,20 @@ def train_step(images):
     gen_loss = generator_loss(fake_output)
     disc_loss = discriminator_loss(real_output, fake_output)
     
-
+    #Gradient Desent
+    #Tensorflow funtion: .trainable_variables, returns trainable variables
     gradients_of_generator = gen_tape.gradient(
         gen_loss, generator.trainable_variables)
     gradients_of_discriminator = disc_tape.gradient(
         disc_loss, discriminator.trainable_variables)
 
+    #
     generator_optimizer.apply_gradients(zip(
         gradients_of_generator, generator.trainable_variables))
     discriminator_optimizer.apply_gradients(zip(
         gradients_of_discriminator, 
         discriminator.trainable_variables))
+
   return gen_loss,disc_loss
 
 def train(dataset, epochs):
