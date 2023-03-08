@@ -1,1 +1,1 @@
-# VQGAN_Exploration
+Gan Exploration
