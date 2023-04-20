@@ -10,8 +10,9 @@ import cv2
 latent_dim = 100
 num_classes = 3
 batch_size = 32 #from 128
-num_epochs_discriminator = 50
-num_epochs_generator = 10
+num_epochs_total = 10
+num_epochs_discriminator = 5 #50
+num_epochs_generator = 50 #10
 img_shape = (28, 28, 3)
 
 # Define the file paths and labels for each dataset
@@ -144,7 +145,7 @@ gan = tf.keras.models.Model(inputs=[gan_input_noise, gan_input_label], outputs=g
 gan.compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(learning_rate=0.0002, beta_1=0.5))
 
 # Train the ACGAN (GAN) model
-for epoch in range(num_epochs_generator):
+for epoch in range(num_epochs_total):
     #Train the discriminator
     for _ in range(num_epochs_discriminator):
         # Select a random batch of images and labels
@@ -168,24 +169,29 @@ for epoch in range(num_epochs_generator):
         discriminator_loss_fake = discriminator.train_on_batch(fake_images, np.zeros((batch_size, 1)))
         discriminator_loss = 0.5 * np.add(discriminator_loss_real, discriminator_loss_fake)
         
-    # Train the generator
-    noise = np.random.normal(0, 1, (batch_size, latent_dim))
-    # fake_labels = np.random.randint(0, num_classes, batch_size).reshape(-1, 1)
-    fake_labels = np.random.randint(0, num_classes, batch_size )
-
-    print(noise.shape, fake_labels.shape )
-
-    gan_loss = gan.train_on_batch([noise, fake_labels], [np.ones((batch_size, 1)), fake_labels])
-    
-
-    print(f"Epoch {epoch+1}, Discriminator Loss: {discriminator_loss_real, discriminator_loss_fake}, GAN Loss: {gan_loss}")
-    
-    # Save the generated images
-    os.makedirs('gen_images_1', exist_ok=True)
-    for i in range(num_classes):
-        label = np.array([i] * batch_size).reshape(-1, 1)
+    for epoch in range(num_epochs_generator):
+        # Train the generator
         noise = np.random.normal(0, 1, (batch_size, latent_dim))
-        generated_images = generator.predict([noise, label])
-        print(np.shape(generated_images))
-        for j in range(batch_size):
-            plt.imsave(f"gen_images_1/epoch_{epoch+1}_class_{i}_img_{j}.png",  generated_images)
+        # fake_labels = np.random.randint(0, num_classes, batch_size).reshape(-1, 1)
+        fake_labels = np.random.randint(0, num_classes, batch_size )
+
+        print(noise.shape, fake_labels.shape )
+
+        gan_loss = gan.train_on_batch([noise, fake_labels], [np.ones((batch_size, 1)), fake_labels])
+        
+
+        print(f"Epoch {epoch+1}, Discriminator Loss: {discriminator_loss_real, discriminator_loss_fake}, GAN Loss: {gan_loss}")
+        
+        # Save the generated images
+        folder_name = 'gen_images_run_2'
+        os.makedirs(folder_name, exist_ok=True)
+        for i in range(num_classes):
+            label = np.array([i] * batch_size).reshape(-1, 1)
+            noise = np.random.normal(0, 1, (batch_size, latent_dim))
+            generated_images = generator.predict([noise, label])
+            print(np.shape(generated_images))
+            for j in range(batch_size):
+                plt.imsave(f"{folder_name}/epoch_{epoch+1}_class_{i}_img_{j}.png",  generated_images)
+    # end of generator
+# end of overall epoch loop
+
