@@ -1,4 +1,4 @@
-### Gan Exploration
+# Gan Exploration
 
 ## Current Code Being Used to Run the Model is: anime_model_gan.py
 
