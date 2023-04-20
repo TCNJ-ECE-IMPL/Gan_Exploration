@@ -3,8 +3,8 @@ import cv2
 import os
 
 # Set the paths for the input and output directories
-input_dir = "/home/nallurn1/Anime_Code/avatar"
-output_dir = "/home/nallurn1/Anime_Code/avatar_crop"
+input_dir = "/home/nallurn1/Anime_model/Gan_Exploration/avatar"
+output_dir = "/home/nallurn1/Anime_model/Gan_Exploration/avatar_crop"
 
 # Load the pre-trained face detection model
 face_model = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_alt.xml")
